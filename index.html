@@ -1,106 +1,40 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>The Aburgerbay chat</title>
+  <meta charset="UTF-8">
+  <title>The Aburgerbay Chat App</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-    #chat-container { width: 90%; max-width: 600px; margin: auto; padding: 10px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    #messages { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; }
-    #messages li { padding: 5px 10px; border-bottom: 1px solid #ddd; }
-    #messages li.private { background: #ffe5e5; }
-    form { display: flex; margin-top: 10px; gap: 5px; }
-    input, button { padding: 8px; border: 1px solid #ccc; border-radius: 5px; }
-    button { background: #4CAF50; color: white; cursor: pointer; }
-    button:hover { background: #45a049; }
-    #username-container { display: flex; gap: 5px; margin-bottom: 10px; }
-    #typing { font-size: 0.9em; color: gray; margin-top: 5px; min-height: 18px; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #chat-container { max-width: 600px; margin: auto; }
+    #messages { list-style-type: none; padding: 0; max-height: 400px; overflow-y: auto; }
+    #messages li { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; background-color: #f1f1f1; }
+    #messages li.private { background-color: #ffe4b5; font-style: italic; border-left: 4px solid #ff9800; }
+    #messages li.private:hover::after { content: "Private message"; display: block; font-size: 0.8em; color: #555; margin-top: 2px; }
+    #input-container { display: flex; gap: 10px; margin-top: 10px; }
+    #message-input { flex: 1; padding: 8px; }
+    #send-button { padding: 8px 16px; cursor: pointer; }
   </style>
 </head>
 <body>
+  <div id="chat-container">
+    <ul id="messages"></ul>
+    <div id="typing"></div>
 
-<div id="chat-container">
-  <h2>Cool Chat App</h2>
+    <!-- Recipient selection -->
+    <div style="margin-bottom: 10px;">
+      Send to:
+      <select id="recipient-select">
+        <option value="">Everyone</option>
+      </select>
+    </div>
 
-  <!-- Username setting -->
-  <div id="username-container">
-    <input id="username" placeholder="Enter username" />
-    <button id="set-username">Set</button>
+    <div id="input-container">
+      <input id="message-input" autocomplete="off" placeholder="Type a message..." />
+      <button id="send-button">Send</button>
+    </div>
   </div>
 
-  <!-- Messages -->
-  <ul id="messages"></ul>
-  <div id="typing"></div>
-
-  <!-- Chat form -->
-  <form id="form">
-    <input id="m" autocomplete="off" placeholder="Type a message" />
-    <input id="recipient" placeholder="Recipient (optional)" />
-    <button>Send</button>
-  </form>
-</div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io();
-  const messages = document.getElementById('messages');
-  const form = document.getElementById('form');
-  const input = document.getElementById('m');
-  const recipientInput = document.getElementById('recipient');
-  const usernameInput = document.getElementById('username');
-  const setUsernameBtn = document.getElementById('set-username');
-  const typingDiv = document.getElementById('typing');
-
-  let username = 'Anonymous';
-  let typingTimeout;
-
-  // Set username
-  setUsernameBtn.onclick = () => {
-    username = usernameInput.value.trim() || 'Anonymous';
-    socket.emit('set username', username);
-    usernameInput.value = '';
-  };
-
-  // Display messages
-  socket.on('chat message', (msg, id, sender, recipient) => {
-    const item = document.createElement('li');
-    if (recipient) {
-      item.textContent = `(Private) ${sender}: ${msg}`;
-      item.classList.add('private');
-    } else {
-      item.textContent = `${sender}: ${msg}`;
-    }
-    messages.appendChild(item);
-    messages.scrollTop = messages.scrollHeight;
-  });
-
-  // Typing events
-  input.addEventListener('input', () => {
-    socket.emit('typing', username);
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-      socket.emit('stop typing', username);
-    }, 1000);
-  });
-
-  socket.on('display typing', (user) => {
-    typingDiv.textContent = `${user} is typing...`;
-  });
-
-  socket.on('hide typing', () => {
-    typingDiv.textContent = '';
-  });
-
-  // Send message
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (input.value) {
-      socket.emit('chat message', input.value, Date.now().toString(), recipientInput.value || null);
-      socket.emit('stop typing', username); // Stop typing when message is sent
-      input.value = '';
-      recipientInput.value = '';
-    }
-  });
-</script>
-
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
 </body>
 </html>
