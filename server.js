@@ -8,64 +8,114 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Database setup
-const db = new sqlite3.Database('./chat.db', (err) => {
-  if (err) console.error(err.message);
-  else console.log('Connected to SQLite database.');
-});
-
-db.run(`CREATE TABLE IF NOT EXISTS messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  sender TEXT,
-  recipient TEXT,
-  message TEXT,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-)`);
-
+// ---- Static files (index.html, client.js) ----
 app.use(express.static(path.join(__dirname)));
 
-// Store connected users
-let users = {};
+// ---- SQLite setup ----
+const db = new sqlite3.Database('./chat.db', (err) => {
+  if (err) console.error('DB open error:', err);
+  else console.log('SQLite connected');
+});
 
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender TEXT NOT NULL,
+      recipient TEXT,
+      content TEXT NOT NULL,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+});
+
+// ---- In-memory users map ----
+/** usersById: { [socket.id]: { id: string, name: string } } */
+const usersById = Object.create(null);
+
+// Helper: broadcast current user list (names only)
+function broadcastUserList() {
+  const names = Object.values(usersById).map(u => u.name);
+  io.emit('user list', names);
+}
+
+// ---- Socket.IO logic ----
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  console.log('Connected:', socket.id);
 
-  // Give user a default name
-  users[socket.id] = { id: socket.id, name: `User-${socket.id.slice(0, 4)}` };
+  // Default username until user sets it
+  usersById[socket.id] = { id: socket.id, name: `User-${socket.id.slice(0, 4)}` };
+  socket.join(usersById[socket.id].name); // join a room named after current username
+  broadcastUserList();
 
-  io.emit('user list', Object.values(users));
+  // Send chat history
+  db.all('SELECT sender, recipient, content, datetime(timestamp) AS timestamp FROM messages ORDER BY timestamp ASC', [], (err, rows) => {
+    if (!err && rows) {
+      socket.emit('load messages', rows);
+    }
+  });
 
-  socket.on('chat message', ({ text, to }) => {
-    const fromUser = users[socket.id];
-    if (!fromUser) return;
+  // Set or change username
+  socket.on('set username', (newName) => {
+    const name = String(newName || '').trim();
+    if (!name) return;
 
-    // Save message to DB
+    // Leave old room, join new room
+    const oldName = usersById[socket.id].name;
+    socket.leave(oldName);
+    usersById[socket.id].name = name;
+    socket.join(name);
+
+    broadcastUserList();
+  });
+
+  // Incoming message (public or private)
+  socket.on('chat message', ({ content, to }) => {
+    const sender = usersById[socket.id]?.name || 'Anonymous';
+    const recipient = (to || '').trim() || null;
+    const safeContent = String(content || '').trim();
+    if (!safeContent) return;
+
+    // Persist to DB
     db.run(
-      `INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)`,
-      [fromUser.name, to || 'Everyone', text]
+      'INSERT INTO messages (sender, recipient, content) VALUES (?, ?, ?)',
+      [sender, recipient, safeContent],
+      (err) => {
+        if (err) {
+          console.error('DB insert error:', err);
+          return;
+        }
+
+        const payload = {
+          sender,
+          recipient, // null for public, a username for private
+          content: safeContent,
+          // Let clients format time; DB has timestamp too
+        };
+
+        if (recipient) {
+          // Private: deliver to recipient room + echo to sender
+          socket.to(recipient).emit('new message', payload);
+          socket.emit('new message', payload);
+        } else {
+          // Public: deliver to everyone
+          io.emit('new message', payload);
+        }
+      }
     );
-
-    if (to) {
-      // Private message
-      socket.to(to).emit('chat message', { from: fromUser.name, text, private: true });
-      socket.emit('chat message', { from: fromUser.name, text, private: true });
-    } else {
-      // Public message
-      io.emit('chat message', { from: fromUser.name, text, private: false });
-    }
   });
 
+  // Typing indicator (optional)
   socket.on('typing', () => {
-    const fromUser = users[socket.id];
-    if (fromUser) {
-      socket.broadcast.emit('typing', fromUser.name);
-    }
+    const sender = usersById[socket.id]?.name || 'Someone';
+    socket.broadcast.emit('typing', sender);
   });
 
+  // Disconnect
   socket.on('disconnect', () => {
-    delete users[socket.id];
-    io.emit('user list', Object.values(users));
-    console.log('User disconnected:', socket.id);
+    delete usersById[socket.id];
+    broadcastUserList();
+    console.log('Disconnected:', socket.id);
   });
 });
 

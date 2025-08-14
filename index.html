@@ -1,36 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>The Aburgerbay Chat App</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #chat-container { max-width: 600px; margin: auto; }
-    #messages { list-style-type: none; padding: 0; max-height: 400px; overflow-y: auto; }
-    #messages li { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; background-color: #f1f1f1; }
-    #messages li.private { background-color: #ffe4b5; font-style: italic; border-left: 4px solid #ff9800; }
-    #messages li.private:hover::after { content: "Private message"; display: block; font-size: 0.8em; color: #555; margin-top: 2px; }
-    #input-container { display: flex; gap: 10px; margin-top: 10px; }
-    #message-input { flex: 1; padding: 8px; }
-    #send-button { padding: 8px 16px; cursor: pointer; }
+    :root { color-scheme: light dark; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #111827; color: #e5e7eb; }
+    header { padding: 16px; background: #0b1220; border-bottom: 1px solid #1f2937; }
+    header h1 { margin: 0; font-size: 20px; }
+    #app { max-width: 900px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+    /* Sidebar */
+    #sidebar { background: #0f172a; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; }
+    #sidebar h2 { margin: 0 0 8px; font-size: 14px; color: #93c5fd; }
+    #username-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    #username-input { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #374151; background: #111827; color: #e5e7eb; }
+    #set-username { padding: 8px 10px; border-radius: 8px; border: 1px solid #2563eb; background: #1d4ed8; color: white; cursor: pointer; }
+    #recipient-select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #374151; background: #111827; color: #e5e7eb; }
+    #typing { margin-top: 10px; min-height: 20px; color: #9ca3af; font-size: 12px; }
+
+    /* Chat column */
+    #chat { background: #0f172a; border: 1px solid #1f2937; border-radius: 12px; display: grid; grid-template-rows: auto 1fr auto; }
+    #messages { list-style: none; margin: 0; padding: 12px; max-height: 65vh; overflow-y: auto; }
+    #messages li { margin: 8px 0; padding: 10px 12px; background: #111827; border: 1px solid #1f2937; border-radius: 10px; }
+    #messages li.private { background: #3b2f1d; border-color: #b45309; }
+    #composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #1f2937; }
+    #message-input { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #374151; background: #111827; color: #e5e7eb; }
+    #send-button { padding: 10px 14px; border-radius: 10px; border: 1px solid #10b981; background: #059669; color: white; cursor: pointer; font-weight: bold; }
   </style>
 </head>
 <body>
-  <div id="chat-container">
-    <ul id="messages"></ul>
-    <div id="typing"></div>
+  <header>
+    <h1>The Aburgerbay Chat App</h1>
+  </header>
 
-    <div style="margin-bottom: 10px;">
-      Send to:
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <h2>Profile</h2>
+      <div id="username-row">
+        <input id="username-input" placeholder="Choose a username…" />
+        <button id="set-username">Set</button>
+      </div>
+
+      <h2>Send to</h2>
       <select id="recipient-select">
         <option value="">Everyone</option>
       </select>
-    </div>
 
-    <div id="input-container">
-      <input id="message-input" autocomplete="off" placeholder="Type a message..." />
-      <button id="send-button">Send</button>
-    </div>
+      <div id="typing"></div>
+    </aside>
+
+    <!-- Chat column -->
+    <section id="chat">
+      <ul id="messages"></ul>
+      <div id="composer">
+        <input id="message-input" autocomplete="off" placeholder="Type a message…" />
+        <button id="send-button">Send</button>
+      </div>
+    </section>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
