@@ -11,46 +11,40 @@ async function main() {
     driver: sqlite3.Database
   });
 
-  // Create table with username
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_offset TEXT UNIQUE,
-      username TEXT,
-      content TEXT
-    );
-  `);
-
-  // Clear previous messages
-  await db.exec('DELETE FROM messages;');
-  console.log('Cleared old messages');
-
   const app = express();
   const server = createServer(app);
   const io = new Server(server, {
     connectionStateRecovery: {}
   });
 
-  io.on('connection', async (socket) => {
-    console.log('a user connected');
+  // Keep track of usernames and their sockets
+  const users = new Map(); // username => socket.id
 
-    // Send all previous messages to the newly connected user
-    const rows = await db.all('SELECT * FROM messages ORDER BY id ASC');
-    socket.emit('previous messages', rows);
+  io.on('connection', (socket) => {
+    console.log('A user connected');
 
-    socket.on('disconnect', () => {
-      console.log('a user disconnected');
+    // Listen for a username assignment
+    socket.on('set username', (username) => {
+      users.set(username, socket.id);
+      socket.username = username;
+      console.log(`User set username: ${username}`);
     });
 
-    // Handle chat messages with username
-    socket.on('chat message', async (msg, clientOffset, username, callback) => {
+    socket.on('disconnect', () => {
+      if (socket.username) {
+        users.delete(socket.username);
+      }
+      console.log('A user disconnected');
+    });
+
+    socket.on('chat message', async (msg, recipient, clientOffset, callback) => {
       let result;
       try {
         result = await db.run(
-          'INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)',
+          'INSERT INTO messages (content, client_offset, recipient) VALUES (?, ?, ?)',
           msg,
           clientOffset,
-          username
+          recipient || null
         );
       } catch (e) {
         if (e.errno === 19) {
@@ -61,18 +55,17 @@ async function main() {
         return;
       }
 
-      // Emit message with username
-      io.emit('chat message', msg, result.lastID, username);
+      if (recipient && users.has(recipient)) {
+        // Private message: emit only to the recipient and sender
+        const recipientSocketId = users.get(recipient);
+        io.to(recipientSocketId).emit('chat message', msg, result.lastID, socket.username);
+        socket.emit('chat message', msg, result.lastID, socket.username);
+      } else {
+        // Public message: emit to everyone
+        io.emit('chat message', msg, result.lastID, socket.username);
+      }
+
       callback?.();
-    });
-
-    // Typing indicator
-    socket.on('typing', (username) => {
-      socket.broadcast.emit('typing', username);
-    });
-
-    socket.on('stop typing', (username) => {
-      socket.broadcast.emit('stop typing', username);
     });
   });
 
