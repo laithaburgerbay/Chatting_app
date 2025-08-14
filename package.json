@@ -1,14 +1,17 @@
 {
-  "name": "aburgerbay-chat",
+  "name": "chat-app",
   "version": "1.0.0",
-  "description": "Simple chat app with public/private messages",
+  "description": "Simple Socket.IO chat app with SQLite3",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "engines": {
+    "node": ">=18.x"
+  },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "better-sqlite3": "^8.5.0"
+    "express": "^4.19.2",
+    "socket.io": "^4.8.1",
+    "sqlite3": "^5.1.7"
   }
 }

@@ -1,74 +1,71 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { Pool } = require('pg');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '/')));
-
-// PostgreSQL setup (replace with your Render credentials)
-const pool = new Pool({
-  user: 'your_db_user',
-  host: 'your_db_host',
-  database: 'your_db_name',
-  password: 'your_db_password',
-  port: 5432,
+// Database setup
+const db = new sqlite3.Database('./chat.db', (err) => {
+  if (err) console.error(err.message);
+  else console.log('Connected to SQLite database.');
 });
 
-// Create messages table if it doesn't exist
-pool.query(`
-CREATE TABLE IF NOT EXISTS messages (
-    id SERIAL PRIMARY KEY,
-    sender TEXT NOT NULL,
-    recipient TEXT,
-    content TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-`).catch(err => console.error(err));
+db.run(`CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sender TEXT,
+  recipient TEXT,
+  message TEXT,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+app.use(express.static(path.join(__dirname)));
+
+// Store connected users
+let users = {};
 
 io.on('connection', (socket) => {
-  console.log('A user connected');
+  console.log('A user connected:', socket.id);
 
-  // Send existing messages to new user
-  pool.query('SELECT * FROM messages ORDER BY timestamp ASC')
-    .then(res => socket.emit('loadMessages', res.rows))
-    .catch(err => console.error(err));
+  // Give user a default name
+  users[socket.id] = { id: socket.id, name: `User-${socket.id.slice(0, 4)}` };
 
-  socket.on('chatMessage', async (data) => {
-    const { sender, recipient, content } = data;
-    try {
-      // Insert message into DB
-      await pool.query(
-        'INSERT INTO messages (sender, recipient, content) VALUES ($1, $2, $3)',
-        [sender, recipient || null, content]
-      );
+  io.emit('user list', Object.values(users));
 
-      // Broadcast message
-      if (recipient) {
-        // Private message to recipient only
-        socket.to(recipient).emit('newMessage', data);
-        socket.emit('newMessage', data); // Also show to sender
-      } else {
-        io.emit('newMessage', data); // Public message
-      }
-    } catch (err) {
-      console.error('DB error:', err);
+  socket.on('chat message', ({ text, to }) => {
+    const fromUser = users[socket.id];
+    if (!fromUser) return;
+
+    // Save message to DB
+    db.run(
+      `INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)`,
+      [fromUser.name, to || 'Everyone', text]
+    );
+
+    if (to) {
+      // Private message
+      socket.to(to).emit('chat message', { from: fromUser.name, text, private: true });
+      socket.emit('chat message', { from: fromUser.name, text, private: true });
+    } else {
+      // Public message
+      io.emit('chat message', { from: fromUser.name, text, private: false });
     }
   });
 
-  socket.on('register', (username) => {
-    socket.username = username;
-    socket.join(username); // Join room for private messages
-    io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.username).filter(Boolean));
+  socket.on('typing', () => {
+    const fromUser = users[socket.id];
+    if (fromUser) {
+      socket.broadcast.emit('typing', fromUser.name);
+    }
   });
 
   socket.on('disconnect', () => {
-    io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.username).filter(Boolean));
+    delete users[socket.id];
+    io.emit('user list', Object.values(users));
+    console.log('User disconnected:', socket.id);
   });
 });
 
