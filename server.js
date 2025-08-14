@@ -11,61 +11,79 @@ async function main() {
     driver: sqlite3.Database
   });
 
+  // Create tables for normal + private messages
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_offset TEXT UNIQUE,
+      content TEXT,
+      sender TEXT,
+      recipient TEXT
+    );
+  `);
+
+  // Optional: clear old messages on startup
+  await db.exec('DELETE FROM messages;');
+  console.log('Cleared old messages');
+
   const app = express();
   const server = createServer(app);
   const io = new Server(server, {
     connectionStateRecovery: {}
   });
 
-  // Keep track of usernames and their sockets
-  const users = new Map(); // username => socket.id
+  const users = {}; // socket.id -> username
 
   io.on('connection', (socket) => {
-    console.log('A user connected');
+    console.log('a user connected');
 
-    // Listen for a username assignment
+    // Set username
     socket.on('set username', (username) => {
-      users.set(username, socket.id);
-      socket.username = username;
-      console.log(`User set username: ${username}`);
+      users[socket.id] = username;
+      console.log(`User ${socket.id} set username to ${username}`);
     });
 
-    socket.on('disconnect', () => {
-      if (socket.username) {
-        users.delete(socket.username);
-      }
-      console.log('A user disconnected');
-    });
-
-    socket.on('chat message', async (msg, recipient, clientOffset, callback) => {
-      let result;
+    // Handle normal + private messages
+    socket.on('chat message', async (msg, clientOffset, recipient) => {
+      const sender = users[socket.id] || 'Anonymous';
       try {
-        result = await db.run(
-          'INSERT INTO messages (content, client_offset, recipient) VALUES (?, ?, ?)',
+        await db.run(
+          'INSERT INTO messages (content, client_offset, sender, recipient) VALUES (?, ?, ?, ?)',
           msg,
           clientOffset,
-          recipient || null
+          sender,
+          recipient
         );
       } catch (e) {
-        if (e.errno === 19) {
-          callback?.();
-          return;
-        }
+        if (e.errno === 19) return; // duplicate
         console.error('DB error:', e);
         return;
       }
 
-      if (recipient && users.has(recipient)) {
-        // Private message: emit only to the recipient and sender
-        const recipientSocketId = users.get(recipient);
-        io.to(recipientSocketId).emit('chat message', msg, result.lastID, socket.username);
-        socket.emit('chat message', msg, result.lastID, socket.username);
+      if (recipient) {
+        // Send only to recipient and sender
+        for (let id in users) {
+          if (users[id] === recipient || id === socket.id) {
+            io.to(id).emit('chat message', msg, null, sender, recipient);
+          }
+        }
       } else {
-        // Public message: emit to everyone
-        io.emit('chat message', msg, result.lastID, socket.username);
+        io.emit('chat message', msg, null, sender, null);
       }
+    });
 
-      callback?.();
+    // Typing indicators
+    socket.on('typing', (user) => {
+      socket.broadcast.emit('display typing', user);
+    });
+
+    socket.on('stop typing', (user) => {
+      socket.broadcast.emit('hide typing');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('a user disconnected');
+      delete users[socket.id];
     });
   });
 
