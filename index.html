@@ -9,7 +9,6 @@
     #messages { list-style-type: none; padding: 0; max-height: 400px; overflow-y: auto; }
     #messages li { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; background-color: #f1f1f1; }
     #messages li.private { background-color: #ffe4b5; font-style: italic; border-left: 4px solid #ff9800; }
-    #messages li.private:hover::after { content: "Private message"; display: block; font-size: 0.8em; color: #555; margin-top: 2px; }
     #input-container { display: flex; gap: 10px; margin-top: 10px; }
     #message-input { flex: 1; padding: 8px; }
     #send-button { padding: 8px 16px; cursor: pointer; }
@@ -18,6 +17,7 @@
 <body>
   <div id="chat-container">
     <ul id="messages"></ul>
+    <div id="typing"></div>
 
     <div style="margin-bottom: 10px;">
       Send to:

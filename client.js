@@ -1,34 +1,44 @@
 const socket = io();
 
-// Elements
-const messagesEl = document.getElementById('messages');
-const inputEl = document.getElementById('message-input');
-const sendBtn = document.getElementById('send-button');
+// Replace with dynamic username or prompt
+const username = prompt('Enter your username:');
+socket.emit('register', username);
+
+const messageInput = document.getElementById('message-input');
+const sendButton = document.getElementById('send-button');
+const messagesList = document.getElementById('messages');
 const recipientSelect = document.getElementById('recipient-select');
 
-// Send message
-sendBtn.addEventListener('click', () => {
-  const msg = inputEl.value.trim();
-  const recipient = recipientSelect.value;
-  if (!msg) return;
-
-  socket.emit('chat message', msg, recipient);
-  inputEl.value = '';
-});
-
-// Receive messages
-socket.on('chat message', (sender, recipient, msg) => {
+function addMessage(data) {
   const li = document.createElement('li');
-  li.textContent = `${sender}: ${msg}`;
-  if (recipient) li.classList.add('private');
-  messagesEl.appendChild(li);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  li.textContent = `${data.sender}: ${data.content}`;
+  if (data.recipient) li.classList.add('private');
+  messagesList.appendChild(li);
+  messagesList.scrollTop = messagesList.scrollHeight;
+}
+
+// Load previous messages
+socket.on('loadMessages', (messages) => {
+  messages.forEach(addMessage);
 });
 
-// Update recipient dropdown
-socket.on('update users', (users) => {
+// Update user list
+socket.on('userList', (users) => {
   recipientSelect.innerHTML = '<option value="">Everyone</option>';
-  users.forEach((user) => {
-    recipientSelect.innerHTML += `<option value="${user}">${user}</option>`;
+  users.forEach(u => {
+    if (u !== username) recipientSelect.innerHTML += `<option value="${u}">${u}</option>`;
   });
+});
+
+// New incoming message
+socket.on('newMessage', addMessage);
+
+sendButton.addEventListener('click', () => {
+  const content = messageInput.value.trim();
+  if (!content) return;
+
+  const recipient = recipientSelect.value || null;
+  const data = { sender: username, recipient, content };
+  socket.emit('chatMessage', data);
+  messageInput.value = '';
 });
