@@ -1,43 +1,102 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Chat App</title>
-    <style>
-      body { font-family: sans-serif; margin: 20px; }
-      ul { list-style-type: none; padding: 0; }
-      li { padding: 5px 0; }
-      input { padding: 10px; width: 80%; }
-      button { padding: 10px; }
-    </style>
-  </head>
-  <body>
-    <h1>Chat App</h1>
-    <ul id="messages"></ul>
-    <form id="form">
-      <input id="input" autocomplete="off" /><button>Send</button>
-    </form>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-      const socket = io();
-      const form = document.getElementById('form');
-      const input = document.getElementById('input');
-      const messages = document.getElementById('messages');
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat App</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+  #chat { flex: 1; overflow-y: auto; padding: 10px; }
+  #chat p { margin: 5px 0; }
+  #chat p span.username { font-weight: bold; margin-right: 5px; }
+  #typing { font-style: italic; color: gray; margin-left: 10px; }
+  #form { display: flex; padding: 10px; background: #fff; }
+  #form input { flex: 1; padding: 10px; margin-right: 5px; border-radius: 5px; border: 1px solid #ccc; }
+  #form button { padding: 10px 15px; border: none; border-radius: 5px; background: #007bff; color: white; cursor: pointer; }
+</style>
+</head>
+<body>
 
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        if (input.value) {
-          socket.emit('chat message', input.value, Date.now().toString(), () => {
-            input.value = '';
-          });
-        }
-      });
+<div id="chat"></div>
+<div id="typing"></div>
 
-      socket.on('chat message', function(msg) {
-        const item = document.createElement('li');
-        item.textContent = msg;
-        messages.appendChild(item);
-        window.scrollTo(0, document.body.scrollHeight);
+<form id="form">
+  <input id="username" type="text" placeholder="Enter your username" required />
+  <input id="input" type="text" placeholder="Type a message..." autocomplete="off" required />
+  <button>Send</button>
+</form>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  const form = document.getElementById('form');
+  const input = document.getElementById('input');
+  const chat = document.getElementById('chat');
+  const typingDiv = document.getElementById('typing');
+  const usernameInput = document.getElementById('username');
+
+  let typing = false;
+  let timeout;
+
+  function appendMessage(username, message) {
+    const p = document.createElement('p');
+    p.innerHTML = `<span class="username">${username}:</span>${message}`;
+    chat.appendChild(p);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  // Show typing indicator
+  function showTyping(name) {
+    typingDiv.textContent = `${name} is typing...`;
+  }
+
+  function hideTyping() {
+    typingDiv.textContent = '';
+  }
+
+  function timeoutFunction() {
+    typing = false;
+    socket.emit('stop typing', usernameInput.value);
+  }
+
+  input.addEventListener('input', () => {
+    if (!typing) {
+      typing = true;
+      socket.emit('typing', usernameInput.value);
+      timeout = setTimeout(timeoutFunction, 1000);
+    } else {
+      clearTimeout(timeout);
+      timeout = setTimeout(timeoutFunction, 1000);
+    }
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (input.value && usernameInput.value) {
+      socket.emit('chat message', input.value, Date.now().toString(), usernameInput.value, () => {
+        input.value = '';
+        hideTyping();
       });
-    </script>
-  </body>
+    }
+  });
+
+  socket.on('chat message', (msg, id, username) => {
+    appendMessage(username, msg);
+  });
+
+  socket.on('previous messages', (messages) => {
+    messages.forEach(m => appendMessage(m.username, m.content));
+  });
+
+  socket.on('typing', (username) => {
+    showTyping(username);
+  });
+
+  socket.on('stop typing', (username) => {
+    hideTyping();
+  });
+</script>
+
+</body>
 </html>

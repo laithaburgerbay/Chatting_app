@@ -11,11 +11,12 @@ async function main() {
     driver: sqlite3.Database
   });
 
-  // Create table
+  // Create table with username
   await db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       client_offset TEXT UNIQUE,
+      username TEXT,
       content TEXT
     );
   `);
@@ -30,20 +31,26 @@ async function main() {
     connectionStateRecovery: {}
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     console.log('a user connected');
+
+    // Send all previous messages to the newly connected user
+    const rows = await db.all('SELECT * FROM messages ORDER BY id ASC');
+    socket.emit('previous messages', rows);
 
     socket.on('disconnect', () => {
       console.log('a user disconnected');
     });
 
-    socket.on('chat message', async (msg, clientOffset, callback) => {
+    // Handle chat messages with username
+    socket.on('chat message', async (msg, clientOffset, username, callback) => {
       let result;
       try {
         result = await db.run(
-          'INSERT INTO messages (content, client_offset) VALUES (?, ?)',
+          'INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)',
           msg,
-          clientOffset
+          clientOffset,
+          username
         );
       } catch (e) {
         if (e.errno === 19) {
@@ -54,8 +61,18 @@ async function main() {
         return;
       }
 
-      io.emit('chat message', msg, result.lastID);
+      // Emit message with username
+      io.emit('chat message', msg, result.lastID, username);
       callback?.();
+    });
+
+    // Typing indicator
+    socket.on('typing', (username) => {
+      socket.broadcast.emit('typing', username);
+    });
+
+    socket.on('stop typing', (username) => {
+      socket.broadcast.emit('stop typing', username);
     });
   });
 
